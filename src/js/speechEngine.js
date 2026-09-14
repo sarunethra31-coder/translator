@@ -243,20 +243,21 @@ class SpeechEngine {
   }
 
   /**
-   * Play Public StreamElements Audio Stream Fallback
+   * Play High-Quality Multi-Language Audio Stream Fallback
    */
   playAudioStreamFallback(text, lang, onStart, onEnd) {
     if (this.synthesis) {
       this.synthesis.cancel();
     }
 
-    const voiceName = this.getStreamElementsVoice(lang);
-    const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=${encodeURIComponent(voiceName)}&text=${encodeURIComponent(text)}`;
+    const langCode = this.getLangCode(lang).split('-')[0];
 
+    // 1. Google GTX TTS Endpoint (CORS-friendly, loud & crystal clear audio)
+    const googleUrl = `https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${langCode}&q=${encodeURIComponent(text)}`;
     const audio = new Audio();
     this.currentAudio = audio;
     audio.crossOrigin = "anonymous";
-    audio.src = ttsUrl;
+    audio.src = googleUrl;
 
     if (onStart) audio.onplay = onStart;
     if (onEnd) {
@@ -265,28 +266,27 @@ class SpeechEngine {
         onEnd();
       };
       audio.onerror = () => {
-        this.currentAudio = null;
-        // Last resort fallback: Translate TTS
-        this.playGoogleTranslateFallback(text, lang, onStart, onEnd);
+        console.warn("Google GTX TTS failed, trying StreamElements fallback");
+        this.playStreamElementsFallback(text, lang, onStart, onEnd);
       };
     }
 
     audio.play().then(() => {
       if (onStart) onStart();
     }).catch(err => {
-      console.warn("StreamElements audio playback error:", err);
-      this.playGoogleTranslateFallback(text, lang, onStart, onEnd);
+      console.warn("Google GTX TTS playback error, trying StreamElements fallback:", err);
+      this.playStreamElementsFallback(text, lang, onStart, onEnd);
     });
   }
 
   /**
-   * Final Fallback: Google Translate TTS Endpoint
+   * Secondary Fallback: StreamElements Voice API
    */
-  playGoogleTranslateFallback(text, lang, onStart, onEnd) {
-    const langCode = this.getLangCode(lang).split('-')[0];
-    const googleUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`;
-    
-    const audio = new Audio(googleUrl);
+  playStreamElementsFallback(text, lang, onStart, onEnd) {
+    const voiceName = this.getStreamElementsVoice(lang);
+    const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=${encodeURIComponent(voiceName)}&text=${encodeURIComponent(text)}`;
+
+    const audio = new Audio(ttsUrl);
     this.currentAudio = audio;
 
     if (onStart) audio.onplay = onStart;
@@ -302,7 +302,8 @@ class SpeechEngine {
     }
 
     audio.play().catch(e => {
-      console.error("All TTS options failed:", e);
+      console.error("All TTS audio streams failed:", e);
+      this.currentAudio = null;
       if (onEnd) onEnd();
     });
   }
